@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการสต็อกร้านขายยา (PharmaStock SQLite)</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome 6 Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <!-- SweetAlert2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+    <!-- Google Font (Kanit) -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --pharma-primary: #0d9488;
+            --pharma-primary-dark: #0f766e;
+            --pharma-secondary: #0284c7;
+            --pharma-bg: #f8fafc;
+        }
+
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: var(--pharma-bg);
+            color: #334155;
+        }
+
+        .navbar-custom {
+            background: linear-gradient(135deg, var(--pharma-primary-dark) 0%, var(--pharma-primary) 100%);
+            box-shadow: 0 4px 12px rgba(13, 148, 136, 0.15);
+        }
+
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card {
+            border-left: 5px solid var(--pharma-primary);
+        }
+        .stat-card.warning { border-left-color: #f59e0b; }
+        .stat-card.danger { border-left-color: #ef4444; }
+        .stat-card.info { border-left-color: #3b82f6; }
+
+        .nav-pills .nav-link {
+            border-radius: 8px;
+            color: #64748b;
+            font-weight: 500;
+            padding: 10px 18px;
+        }
+        .nav-pills .nav-link.active {
+            background-color: var(--pharma-primary);
+            color: #fff;
+        }
+
+        .table-custom th {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        .badge-status {
+            font-size: 0.82rem;
+            padding: 6px 12px;
+            border-radius: 20px;
+        }
+
+        .fefo-banner {
+            background-color: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+            border-radius: 8px;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loading Screen for SQLite Initialization -->
+    <div id="loadingScreen" class="loading-overlay">
+        <div class="spinner-border text-teal style="width: 3rem; height: 3rem;" role="status" style="color: var(--pharma-primary);">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h5 class="mt-3 text-secondary">กำลังโหลดฐานข้อมูล SQLite...</h5>
+    </div>
+
+    <!-- Navigation Header -->
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top py-2">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold fs-4" href="#">
+                <i class="fa-solid fa-prescription-bottle-medical fs-3 text-warning"></i>
+                <span>PharmaStock <span class="fs-6 opacity-75">SQLite Edition</span></span>
+            </a>
+            <div class="d-flex align-items-center gap-2 text-white">
+                <span class="badge bg-light text-dark shadow-sm">
+                    <i class="fa-solid fa-database text-teal me-1"></i> SQLite Engine Active
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container-fluid px-4 py-4">
+        
+        <!-- Tab Navigation Menu -->
+        <ul class="nav nav-pills mb-4 gap-2 bg-white p-2 rounded-3 shadow-sm" id="mainTab" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" id="dashboard-tab" data-bs-toggle="pill" data-bs-target="#tab-dashboard" type="button">
+                    <i class="fa-solid fa-chart-pie me-1"></i> แผงควบคุม (Dashboard)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="inventory-tab" data-bs-toggle="pill" data-bs-target="#tab-inventory" type="button">
+                    <i class="fa-solid fa-boxes-stacked me-1"></i> สต็อกสินค้า & รายการยา
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="dispense-tab" data-bs-toggle="pill" data-bs-target="#tab-dispense" type="button">
+                    <i class="fa-solid fa-hand-holding-medical me-1"></i> ตัดสต็อก / จ่ายยา (FEFO)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="expiry-tab" data-bs-toggle="pill" data-bs-target="#tab-expiry" type="button">
+                    <i class="fa-solid fa-triangle-exclamation me-1"></i> แจ้งเตือนวันหมดอายุ
+                    <span id="expiryBadgeCount" class="badge bg-danger rounded-pill ms-1 d-none">0</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="history-tab" data-bs-toggle="pill" data-bs-target="#tab-history" type="button">
+                    <i class="fa-solid fa-clock-rotate-left me-1"></i> ประวัติรายการสต็อก
+                </button>
+            </li>
+            <li class="nav-item ms-auto">
+                <button class="nav-link text-primary" id="sqlite-tab" data-bs-toggle="pill" data-bs-target="#tab-sqlite" type="button">
+                    <i class="fa-solid fa-database me-1"></i> จัดการฐานข้อมูล SQLite
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Contents -->
+        <div class="tab-content" id="mainTabContent">
+            
+            <!-- 1. DASHBOARD TAB -->
+            <div class="tab-pane fade show active" id="tab-dashboard" role="tabpanel">
+                <!-- Summary KPI Cards -->
+                <div class="row g-3 mb-4">
+                    <div class="col-12 col-sm-6 col-xl-3">
+                        <div class="card p-3 stat-card">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small fw-medium">รายการยาทั้งหมด</div>
+                                    <div class="fs-3 fw-bold text-dark mt-1" id="statTotalProducts">0</div>
+                                </div>
+                                <div class="bg-light p-3 rounded-circle text-teal">
+                                    <i class="fa-solid fa-pills fs-3" style="color: var(--pharma-primary);"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-xl-3">
+                        <div class="card p-3 stat-card info">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small fw-medium">จำนวนคงเหลือรวม (หน่วย)</div>
+                                    <div class="fs-3 fw-bold text-dark mt-1" id="statTotalStock">0</div>
+                                </div>
+                                <div class="bg-light p-3 rounded-circle text-primary">
+                                    <i class="fa-solid fa-cubes fs-3"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-xl-3">
+                        <div class="card p-3 stat-card warning">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small fw-medium">ใกล้หมดอายุ (&le; 90 วัน)</div>
+                                    <div class="fs-3 fw-bold text-warning mt-1" id="statNearExpiry">0</div>
+                                </div>
+                                <div class="bg-light p-3 rounded-circle text-warning">
+                                    <i class="fa-solid fa-hourglass-half fs-3"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-xl-3">
+                        <div class="card p-3 stat-card danger">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small fw-medium">หมดอายุแล้ว / สต็อกต่ำ</div>
+                                    <div class="fs-3 fw-bold text-danger mt-1" id="statAlertCount">0</div>
+                                </div>
+                                <div class="bg-light p-3 rounded-circle text-danger">
+                                    <i class="fa-solid fa-circle-exclamation fs-3"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts & Quick Action Row -->
+                <div class="row g-4 mb-4">
+                    <div class="col-12 col-lg-5">
+                        <div class="card p-4 h-100">
+                            <h6 class="fw-bold mb-3"><i class="fa-solid fa-chart-pie me-2 text-primary"></i>สัดส่วนสถานะวันหมดอายุยา</h6>
+                            <div style="position: relative; height: 260px;">
+                                <canvas id="chartExpiry"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-7">
+                        <div class="card p-4 h-100">
+                            <h6 class="fw-bold mb-3"><i class="fa-solid fa-chart-bar me-2 text-teal"></i>10 อันดับยาที่มีจำนวนสต็อกสูงสุด</h6>
+                            <div style="position: relative; height: 260px;">
+                                <canvas id="chartTopStock"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Critical Expiry Table Quick View -->
+                <div class="card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0 text-danger"><i class="fa-solid fa-bell me-2"></i>รายการยาที่ต้องดำเนินการด่วน (ใกล้หมดอายุ & สต็อกต่ำ)</h6>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="switchToTab('expiry-tab')">ดูทั้งหมด &rarr;</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-custom align-middle">
+                            <thead>
+                                <tr>
+                                    <th>รหัสยา</th>
+                                    <th>ชื่อการค้า / ชื่อสามัญ</th>
+                                    <th>Lot No.</th>
+                                    <th>วันหมดอายุ</th>
+                                    <th>สถานะ</th>
+                                    <th>คงเหลือ</th>
+                                    <th> action </th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableDashboardAlerts">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. INVENTORY & PRODUCT MANAGEMENT TAB -->
+            <div class="tab-pane fade" id="tab-inventory" role="tabpanel">
+                <div class="card p-4">
+                    <!-- Action Bar -->
+                    <div class="row g-3 justify-content-between align-items-center mb-4">
+                        <div class="col-12 col-md-6 d-flex gap-2">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+                                <input type="text" id="searchInventory" class="form-control" placeholder="ค้นหาตามชื่อยา, รหัสยา หรือ Lot No....">
+                            </div>
+                            <select id="filterCategory" class="form-select w-auto">
+                                <option value="">หมวดหมู่ทั้งหมด</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6 text-md-end d-flex justify-content-md-end gap-2">
+                            <button class="btn btn-success fw-medium" data-bs-toggle="modal" data-bs-target="#modalAddProduct">
+                                <i class="fa-solid fa-plus me-1"></i> เพิ่มรายการยาใหม่
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Inventory Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover table-custom align-middle" id="inventoryTable">
+                            <thead>
+                                <tr>
+                                    <th>รหัสยา</th>
+                                    <th>ชื่อการค้า (Trade Name)</th>
+                                    <th>ชื่อสามัญ (Generic Name)</th>
+                                    <th>หมวดหมู่</th>
+                                    <th>จำนวน Lot</th>
+                                    <th>สต็อกรวม</th>
+                                    <th>วันหมดอายุถัดไป</th>
+                                    <th>ที่เก็บ/ชั้นวาง</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableInventoryBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. DISPENSE / STOCK OUT TAB (FEFO) -->
+            <div class="tab-pane fade" id="tab-dispense" role="tabpanel">
+                <div class="row justify-content-center">
+                    <div class="col-12 col-lg-8">
+                        <div class="card p-4">
+                            <h5 class="fw-bold mb-3 text-teal">
+                                <i class="fa-solid fa-hand-holding-medical me-2"></i>ตัดสต็อก / เบิกจ่ายยา (ระบบ FEFO แนะนำหมดอายุก่อน)
+                            </h5>
+                            <p class="text-muted small">ระบบจะเรียงลำดับ Lot ที่หมดอายุเร็วที่สุดขึ้นมาก่อนโดยอัตโนมัติ เพื่อป้องกันยาหมดอายุคาสต็อก</p>
+                            <hr>
+
+                            <form id="formDispense" onsubmit="handleDispense(event)">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">1. เลือกรักษา / ยาที่ต้องการตัดสต็อก <span class="text-danger">*</span></label>
+                                    <select id="dispenseProductSelect" class="form-select form-select-lg" required onchange="onDispenseProductChange()">
+                                        <option value="">-- เลือกรหัสยาหรือชื่อยา --</option>
+                                    </select>
+                                </div>
+
+                                <!-- FEFO Recommendation Alert Banner -->
+                                <div id="fefoAlert" class="fefo-banner p-3 mb-3 d-none">
+                                    <div class="d-flex align-items-center">
+                                        <i class="fa-solid fa-lightbulb fs-3 me-3 text-warning"></i>
+                                        <div>
+                                            <div class="fw-bold">คำแนะนำจ่ายยาตามหลัก FEFO:</div>
+                                            <div id="fefoText" class="small mt-1"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row g-3 mb-3">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label fw-bold">2. เลือก Lot / Batch No. <span class="text-danger">*</span></label>
+                                        <select id="dispenseBatchSelect" class="form-select" required onchange="onDispenseBatchChange()">
+                                            <option value="">-- เลือก Lot ยา --</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label fw-bold">คงเหลือใน Lot นี้</label>
+                                        <input type="text" id="dispenseAvailableQty" class="form-control bg-light" readonly value="-">
+                                    </div>
+                                </div>
+
+                                <div class="row g-3 mb-3">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label fw-bold">3. จำนวนที่ต้องการตัดสต็อก <span class="text-danger">*</span></label>
+                                        <input type="number" id="dispenseQty" class="form-control form-control-lg" min="1" required placeholder="ใส่จำนวน">
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label fw-bold">4. สาเหตุในการตัดสต็อก <span class="text-danger">*</span></label>
+                                        <select id="dispenseReason" class="form-select form-select-lg" required>
+                                            <option value="ขายออก / จ่ายยาให้ผู้ป่วย">ขายออก / จ่ายยาให้ผู้ป่วย</option>
+                                            <option value="ยาหมดอายุ / คัดทิ้ง">ยาหมดอายุ / คัดทิ้ง</option>
+                                            <option value="ชำรุด / เสียหาย">ชำรุด / เสียหาย</option>
+                                            <option value="ส่งคืนบริษัทผู้ผลิต">ส่งคืนบริษัทผู้ผลิต</option>
+                                            <option value="ปรับปรุงสต็อก / ปรับยอดตรวจนับ">ปรับปรุงสต็อก / ปรับยอดตรวจนับ</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="form-label">หมายเหตุเพิ่มเติม (ถ้ามี)</label>
+                                    <input type="text" id="dispenseNote" class="form-control" placeholder="เช่น เลขที่ใบเสร็จ หรือ ชื่อผู้เบิก">
+                                </div>
+
+                                <div class="d-grid gap-2">
+                                    <button type="submit" class="btn btn-teal btn-lg text-white" style="background-color: var(--pharma-primary);">
+                                        <i class="fa-solid fa-check-circle me-2"></i> ยืนยันการตัดสต็อก
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. EXPIRY ALERTS TAB -->
+            <div class="tab-pane fade" id="tab-expiry" role="tabpanel">
+                <div class="card p-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+                        <h5 class="fw-bold mb-0"><i class="fa-solid fa-calendar-xmark text-danger me-2"></i>รายงานการตรวจสอบวันหมดอายุ</h5>
+                        <div class="btn-group" role="group" id="expiryFilterGroup">
+                            <button type="button" class="btn btn-outline-secondary active" onclick="filterExpiryList('ALL')">ทั้งหมด</button>
+                            <button type="button" class="btn btn-outline-danger" onclick="filterExpiryList('EXPIRED')">🔴 หมดอายุแล้ว</button>
+                            <button type="button" class="btn btn-outline-warning" onclick="filterExpiryList('CRITICAL')">🟠 ใกล้หมดอายุ (&le;30 วัน)</button>
+                            <button type="button" class="btn btn-outline-info" onclick="filterExpiryList('WARNING')">🟡 ใกล้หมดอายุ (31-90 วัน)</button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-custom align-middle">
+                            <thead>
+                                <tr>
+                                    <th>รหัสยา</th>
+                                    <th>ชื่อการค้า / ชื่อสามัญ</th>
+                                    <th>Lot Number</th>
+                                    <th>วันหมดอายุ</th>
+                                    <th>ระยะเวลาคงเหลือ</th>
+                                    <th>จำนวนคงเหลือ</th>
+                                    <th>ตำแหน่งชั้นวาง</th>
+                                    <th>จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableExpiryBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. TRANSACTION HISTORY TAB -->
+            <div class="tab-pane fade" id="tab-history" role="tabpanel">
+                <div class="card p-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+                        <h5 class="fw-bold mb-0"><i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>ประวัติการรับเข้าและตัดสต็อก</h5>
+                        <div class="d-flex gap-2">
+                            <input type="text" id="searchHistory" class="form-control" placeholder="ค้นหาในประวัติ..." onkeyup="renderHistoryTable()">
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-custom align-middle">
+                            <thead>
+                                <tr>
+                                    <th>วัน-เวลา</th>
+                                    <th>ประเภท</th>
+                                    <th>รายการยา</th>
+                                    <th>Lot No.</th>
+                                    <th>จำนวน</th>
+                                    <th>สาเหตุ / หมายเหตุ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableHistoryBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. SQLITE MANAGEMENT TAB -->
+            <div class="tab-pane fade" id="tab-sqlite" role="tabpanel">
+                <div class="row g-4">
+                    <div class="col-12 col-md-6">
+                        <div class="card p-4 h-100">
+                            <h5 class="fw-bold mb-3"><i class="fa-solid fa-file-export me-2 text-primary"></i>ส่งออก / นำเข้าไฟล์ SQLite (.db)</h5>
+                            <p class="text-muted small">ท่านสามารถสำรองข้อมูลไฟล์ฐานข้อมูล SQLite แท้จริงไปเก็บบนเครื่อง หรือนำเข้าไฟล์เดิมเพื่อสลับใช้งานได้ทันที</p>
+                            <hr>
+                            <div class="d-grid gap-3">
+                                <button class="btn btn-outline-primary btn-lg" onclick="exportSQLiteFile()">
+                                    <i class="fa-solid fa-download me-2"></i> ดาวน์โหลดฐานข้อมูล (.sqlite)
+                                </button>
+                                
+                                <div>
+                                    <label class="form-label fw-bold">นำเข้าไฟล์ SQLite (.sqlite / .db):</label>
+                                    <input type="file" id="sqliteFileInput" class="form-control" accept=".sqlite,.db" onchange="importSQLiteFile(event)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <div class="card p-4 h-100 border-danger">
+                            <h5 class="fw-bold mb-3 text-danger"><i class="fa-solid fa-rotate-right me-2"></i>รีเซ็ตข้อมูลตัวอย่าง (Reset & Seed Data)</h5>
+                            <p class="text-muted small">หากต้องการทดสอบระบบใหม่ สามารถล้างข้อมูลทั้งหมดและโหลดชุดข้อมูลตัวอย่างยาร้านขายยาตั้งต้นได้ที่นี่</p>
+                            <hr>
+                            <button class="btn btn-danger btn-lg mt-2" onclick="confirmResetDatabase()">
+                                <i class="fa-solid fa-trash-arrow-up me-2"></i> ล้างข้อมูลและสร้างข้อมูลตัวอย่างใหม่
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Direct Query Tool (Advanced) -->
+                    <div class="col-12">
+                        <div class="card p-4">
+                            <h6 class="fw-bold mb-2"><i class="fa-solid fa-code me-2"></i>SQLite Query Console (สำหรับผู้ดูแลระบบ)</h6>
+                            <div class="mb-3">
+                                <textarea id="sqlQueryInput" class="form-control font-monospace" rows="3" placeholder="SELECT * FROM products;"></textarea>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <button class="btn btn-sm btn-dark" onclick="runCustomQuery()">Run SQL Query</button>
+                                <span class="small text-muted">คำเตือน: โปรดระมัดระวังคำสั่ง UPDATE หรือ DELETE</span>
+                            </div>
+                            <div id="sqlQueryResult" class="mt-3 table-responsive d-none"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MODAL 1: ADD NEW PRODUCT -->
+    <div class="modal fade" id="modalAddProduct" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-teal text-white" style="background-color: var(--pharma-primary);">
+                    <h5 class="modal-header-title mb-0 text-white"><i class="fa-solid fa-plus-circle me-2"></i>เพิ่มรายการยาใหม่เข้าสต็อก</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formAddProduct" onsubmit="handleAddProduct(event)">
+                    <div class="modal-body">
+                        <h6 class="fw-bold text-teal mb-3"><i class="fa-solid fa-capsules me-1"></i>1. ข้อมูลทั่วไปของยา</h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">รหัสยา (Product Code) <span class="text-danger">*</span></label>
+                                <input type="text" id="addCode" class="form-control" required placeholder="เช่น MED-001">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">ชื่อการค้า (Trade Name) <span class="text-danger">*</span></label>
+                                <input type="text" id="addTradeName" class="form-control" required placeholder="เช่น Tylenol 500mg">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">ชื่อสามัญทางยา (Generic Name)</label>
+                                <input type="text" id="addGenericName" class="form-control" placeholder="เช่น Paracetamol">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">หมวดหมู่ยา <span class="text-danger">*</span></label>
+                                <input type="text" id="addCategory" class="form-control" required list="categoryOptions" placeholder="เช่น ยาสามัญประจำบ้าน">
+                                <datalist id="categoryOptions">
+                                    <option value="ยาสามัญประจำบ้าน">
+                                    <option value="ยาอันตราย">
+                                    <option value="ยาควบคุมพิเศษ">
+                                    <option value="เวชภัณฑ์ / อุปกรณ์การแพทย์">
+                                    <option value="อาหารเสริม / วิตามิน">
+                                </datalist>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">หน่วยบรรจุ <span class="text-danger">*</span></label>
+                                <input type="text" id="addUnit" class="form-control" required placeholder="เช่น เม็ด, แผง, กล่อง, ขวด">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">ที่เก็บ/ชั้นวาง (Location)</label>
+                                <input type="text" id="addLocation" class="form-control" placeholder="เช่น ตู้ A-1, ชั้น 2">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">จุดเตือนสต็อกต่ำขั้นต่ำ (Min Stock)</label>
+                                <input type="number" id="addMinStock" class="form-control" value="10">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">ราคาขายต่อหน่วย (บาท)</label>
+                                <input type="number" step="0.01" id="addPriceSell" class="form-control" value="0.00">
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+                        <h6 class="fw-bold text-teal mb-3"><i class="fa-solid fa-box-archive me-1"></i>2. ข้อมูล Lot/Batch แรกเข้า</h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">เลขที่ผลิต (Lot/Batch No.) <span class="text-danger">*</span></label>
+                                <input type="text" id="addBatchNo" class="form-control" required placeholder="เช่น LOT-2024A">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">วันหมดอายุ (Expiry Date) <span class="text-danger">*</span></label>
+                                <input type="date" id="addExpiryDate" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">จำนวนนำเข้าเริ่มต้น <span class="text-danger">*</span></label>
+                                <input type="number" id="addQuantity" class="form-control" min="1" required placeholder="จำนวนหน่วย">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                        <button type="submit" class="btn btn-teal text-white" style="background-color: var(--pharma-primary);">บันทึกยารายการใหม่</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: ADD NEW BATCH TO EXISTING PRODUCT -->
+    <div class="modal fade" id="modalAddBatch" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title mb-0 text-white"><i class="fa-solid fa-plus me-2"></i>เติมสต็อก (เพิ่ม Lot ใหม่)</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formAddBatch" onsubmit="handleAddBatch(event)">
+                    <input type="hidden" id="batchProductId">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">รายการยา</label>
+                            <input type="text" id="batchProductName" class="form-control bg-light" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">เลขที่ผลิต (Lot No.) <span class="text-danger">*</span></label>
+                            <input type="text" id="newBatchNo" class="form-control" required placeholder="เช่น LOT-9988">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">วันหมดอายุ (Expiry Date) <span class="text-danger">*</span></label>
+                            <input type="date" id="newExpiryDate" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">จำนวนที่รับเพิ่ม <span class="text-danger">*</span></label>
+                            <input type="number" id="newQuantity" class="form-control" min="1" required placeholder="ใส่จำนวน">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                        <button type="submit" class="btn btn-primary">บันทึกเพิ่ม Lot</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- CDN JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SQLite WebAssembly Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
+    <!-- Application Script -->
+    <script>
+        // Global State & Database Instance
+        let db = null;
+        let SQL = null;
+        let expiryChartInstance = null;
+        let topStockChartInstance = null;
+        let currentExpiryFilter = 'ALL';
+
+        // Helper: Format Date Offset for Dynamic Data
+        function getDateOffset(days) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            return d.toISOString().slice(0, 10);
+        }
+
+        // Initialize SQLite Engine
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
+
+                const savedDb = loadDBFromLocalStorage();
+                if (savedDb) {
+                    try {
+                        db = new SQL.Database(savedDb);
+                    } catch (e) {
+                        console.warn("Saved DB incompatible, re-creating...", e);
+                        db = new SQL.Database();
+                        createTablesAndSeed();
+                    }
+                } else {
+                    db = new SQL.Database();
+                    createTablesAndSeed();
+                }
+
+                saveDBToLocalStorage();
+                document.getElementById('loadingScreen').classList.add('d-none');
+                
+                initEventListeners();
+                renderAll();
+            } catch (err) {
+                console.error("SQLite Initialization Error:", err);
+                document.getElementById('loadingScreen').innerHTML = `
+                    <div class="text-center p-4">
+                        <i class="fa-solid fa-triangle-exclamation text-danger fs-1 mb-3"></i>
+                        <h4 class="text-danger">ไม่สามารถโหลด SQLite WebAssembly ได้</h4>
+                        <p class="text-muted">กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่อีกครั้ง</p>
+                    </div>
+                `;
+            }
+        });
+
+        // Save DB to LocalStorage (Base64 String)
+        function saveDBToLocalStorage() {
+            if (!db) return;
+            const data = db.export();
+            let binary = '';
+            const bytes = new Uint8Array(data);
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = window.btoa(binary);
+            try {
+                localStorage.setItem('pharma_sqlite_db_b64', base64);
+            } catch (e) {
+                console.warn("Storage full or unavailable:", e);
+            }
+        }
+
+        // Load DB from LocalStorage
+        function loadDBFromLocalStorage() {
+            const base64 = localStorage.getItem('pharma_sqlite_db_b64');
+            if (!base64) return null;
+            try {
+                const binary = window.atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                return bytes;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Database Schema & Seed Data Initialization
+        function createTablesAndSeed() {
+            db.run(`
+                CREATE TABLE IF NOT EXISTS products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT UNIQUE NOT NULL,
+                    trade_name TEXT NOT NULL,
+                    generic_name TEXT,
+                    category TEXT NOT NULL,
+                    unit TEXT NOT NULL,
+                    min_stock INTEGER DEFAULT 10,
+                    shelf_location TEXT,
+                    price_sell REAL DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS batches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER NOT NULL,
+                    batch_no TEXT NOT NULL,
+                    expiry_date DATE NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 0,
+                    received_date DATE DEFAULT CURRENT_DATE,
+                    FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER NOT NULL,
+                    batch_id INTEGER,
+                    type TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    reason TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(product_id) REFERENCES products(id),
+                    FOREIGN KEY(batch_id) REFERENCES batches(id)
+                );
+            `);
+
+            // Seed Thai Pharmacy Sample Data
+            db.run(`
+                INSERT INTO products (code, trade_name, generic_name, category, unit, min_stock, shelf_location, price_sell) VALUES
+                ('MED-001', 'Tylenol 500mg', 'Paracetamol', 'ยาสามัญประจำบ้าน', 'เม็ด', 100, 'ตู้ A-1', 15.00),
+                ('MED-002', 'Amoxil 500mg', 'Amoxicillin', 'ยาอันตราย', 'แผง', 20, 'ตู้ B-2', 65.00),
+                ('MED-003', 'Zyrtec 10mg', 'Cetirizine', 'ยาสามัญประจำบ้าน', 'กล่อง', 15, 'ตู้ A-3', 120.00),
+                ('MED-004', 'Miracid 20mg', 'Omeprazole', 'ยาอันตราย', 'แผง', 30, 'ตู้ C-1', 85.00),
+                ('MED-005', 'Syringe 5ml', 'N/A', 'เวชภัณฑ์ / อุปกรณ์การแพทย์', 'ชิ้น', 50, 'ชั้นวาง D-4', 5.00),
+                ('MED-006', 'Alcohol 70% 450ml', 'Ethyl Alcohol', 'เวชภัณฑ์ / อุปกรณ์การแพทย์', 'ขวด', 25, 'ชั้นวาง D-1', 45.00);
+            `);
+
+            // Batches with Dynamic Relational Expiry Dates
+            const d15 = getDateOffset(15);   // Near Expiry <30d
+            const dExpired = getDateOffset(-8); // Expired
+            const d60 = getDateOffset(60);   // Near Expiry <90d
+            const d365 = getDateOffset(365); // Safe
+
+            db.run(`
+                INSERT INTO batches (product_id, batch_no, expiry_date, quantity) VALUES
+                (1, 'LOT-A101', '${d15}', 150),
+                (1, 'LOT-A102', '${d365}', 500),
+                (2, 'LOT-B882', '${dExpired}', 35),
+                (2, 'LOT-B883', '${d60}', 120),
+                (3, 'LOT-C301', '${getDateOffset(22)}', 8),
+                (4, 'LOT-M901', '${d365}', 250),
+                (5, 'LOT-S110', '${d365}', 12),
+                (6, 'LOT-AL77', '${getDateOffset(10)}', 18);
+            `);
+
+            db.run(`
+                INSERT INTO transactions (product_id, batch_id, type, quantity, reason) VALUES
+                (1, 1, 'IN', 150, 'นำเข้าเริ่มต้น'),
+                (1, 2, 'IN', 500, 'นำเข้าเริ่มต้น'),
+                (2, 3, 'IN', 35, 'นำเข้าเริ่มต้น'),
+                (3, 5, 'OUT', 2, 'ขายออกให้ผู้ป่วย');
+            `);
+        }
+
+        // Helper SQL Executer returning JavaScript Objects
+        function queryRows(sql, params = []) {
+            if (!db) return [];
+            try {
+                const stmt = db.prepare(sql);
+                stmt.bind(params);
+                const rows = [];
+                while (stmt.step()) {
+                    rows.push(stmt.getAsObject());
+                }
+                stmt.free();
+                return rows;
+            } catch (e) {
+                console.error("SQL Error:", e, sql);
+                return [];
+            }
+        }
+
+        function executeSQL(sql, params = []) {
+            if (!db) return false;
+            try {
+                db.run(sql, params);
+                saveDBToLocalStorage();
+                return true;
+            } catch (e) {
+                Swal.fire('ข้อผิดพลาด SQL', e.message, 'error');
+                return false;
+            }
+        }
+
+        // Render All Dashboard Components
+        function renderAll() {
+            renderDashboard();
+            renderInventoryTable();
+            renderDispenseProductDropdown();
+            renderExpiryTable();
+            renderHistoryTable();
+            populateCategoryFilter();
+        }
+
+        // TAB 1: DASHBOARD LOGIC
+        function renderDashboard() {
+            const today = new Date().toISOString().slice(0, 10);
+            const d30 = getDateOffset(30);
+            const d90 = getDateOffset(90);
+
+            // KPI Stats
+            const totalProducts = queryRows(`SELECT COUNT(*) as count FROM products`)[0]?.count || 0;
+            const totalStock = queryRows(`SELECT SUM(quantity) as sum FROM batches`)[0]?.sum || 0;
+            
+            const nearExpiry90 = queryRows(`
+                SELECT COUNT(*) as count FROM batches 
+                WHERE expiry_date <= '${d90}' AND expiry_date >= '${today}' AND quantity > 0
+            `)[0]?.count || 0;
+
+            const expiredCount = queryRows(`
+                SELECT COUNT(*) as count FROM batches 
+                WHERE expiry_date < '${today}' AND quantity > 0
+            `)[0]?.count || 0;
+
+            const lowStockProducts = queryRows(`
+                SELECT p.id, p.min_stock, COALESCE(SUM(b.quantity), 0) as total_qty 
+                FROM products p LEFT JOIN batches b ON p.id = b.product_id 
+                GROUP BY p.id HAVING total_qty <= p.min_stock
+            `).length;
+
+            document.getElementById('statTotalProducts').innerText = totalProducts.toLocaleString();
+            document.getElementById('statTotalStock').innerText = totalStock.toLocaleString();
+            document.getElementById('statNearExpiry').innerText = nearExpiry90.toLocaleString();
+            document.getElementById('statAlertCount').innerText = (expiredCount + lowStockProducts).toLocaleString();
+
+            // Expiry Alert Badge in Nav
+            const expiryBadge = document.getElementById('expiryBadgeCount');
+            if (expiredCount + nearExpiry90 > 0) {
+                expiryBadge.classList.remove('d-none');
+                expiryBadge.innerText = expiredCount + nearExpiry90;
+            } else {
+                expiryBadge.classList.add('d-none');
+            }
+
+            // Quick Alert Table
+            const alertBatches = queryRows(`
+                SELECT b.*, p.code, p.trade_name, p.generic_name, p.unit,
+                       (julianday(b.expiry_date) - julianday('now')) as days_left
+                FROM batches b
+                JOIN products p ON b.product_id = p.id
+                WHERE b.quantity > 0 AND (b.expiry_date <= '${d90}')
+                ORDER BY b.expiry_date ASC LIMIT 5
+            `);
+
+            let alertHtml = '';
+            if (alertBatches.length === 0) {
+                alertHtml = `<tr><td colspan="7" class="text-center text-muted py-3">ไม่มีรายการยาใกล้หมดอายุในขณะนี้</td></tr>`;
+            } else {
+                alertBatches.forEach(item => {
+                    const days = Math.ceil(item.days_left);
+                    let badge = '';
+                    if (days < 0) {
+                        badge = `<span class="badge bg-danger badge-status">หมดอายุแล้ว (${Math.abs(days)} วันที่แล้ว)</span>`;
+                    } else if (days <= 30) {
+                        badge = `<span class="badge bg-warning text-dark badge-status">วิกฤต (เหลือ ${days} วัน)</span>`;
+                    } else {
+                        badge = `<span class="badge bg-info text-dark badge-status">เตือน (เหลือ ${days} วัน)</span>`;
+                    }
+
+                    alertHtml += `
+                        <tr>
+                            <td class="fw-bold">${item.code}</td>
+                            <td>${item.trade_name} <small class="text-muted">(${item.generic_name || '-'})</small></td>
+                            <td><span class="badge bg-light text-dark border">${item.batch_no}</span></td>
+                            <td>${item.expiry_date}</td>
+                            <td>${badge}</td>
+                            <td class="fw-bold">${item.quantity} ${item.unit}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-teal" onclick="quickDispense('${item.product_id}', '${item.id}')">
+                                    <i class="fa-solid fa-hand-holding-medical"></i> ตัดสต็อก
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+            document.getElementById('tableDashboardAlerts').innerHTML = alertHtml;
+
+            // Render Charts
+            renderCharts(expiredCount, nearExpiry90, totalProducts);
+        }
+
+        // Render Charts using Chart.js
+        function renderCharts(expired, near90, total) {
+            // Chart 1: Expiry Doughnut
+            const ctx1 = document.getElementById('chartExpiry');
+            if (expiryChartInstance) expiryChartInstance.destroy();
+            expiryChartInstance = new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: ['ปกติ', 'ใกล้หมดอายุ (31-90 วัน)', 'หมดอายุ / &le;30 วัน'],
+                    datasets: [{
+                        data: [Math.max(0, total - near90 - expired), near90, expired],
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // Chart 2: Top Stocked Products
+            const topProducts = queryRows(`
+                SELECT p.trade_name, SUM(b.quantity) as total_qty
+                FROM products p
+                JOIN batches b ON p.id = b.product_id
+                GROUP BY p.id
+                ORDER BY total_qty DESC LIMIT 7
+            `);
+
+            const ctx2 = document.getElementById('chartTopStock');
+            if (topStockChartInstance) topStockChartInstance.destroy();
+            topStockChartInstance = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: topProducts.map(p => p.trade_name),
+                    datasets: [{
+                        label: 'จำนวนคงเหลือในสต็อก',
+                        data: topProducts.map(p => p.total_qty),
+                        backgroundColor: '#0d9488'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // TAB 2: INVENTORY LOGIC
+        function renderInventoryTable() {
+            const search = document.getElementById('searchInventory').value.toLowerCase();
+            const category = document.getElementById('filterCategory').value;
+
+            const products = queryRows(`
+                SELECT p.*, 
+                       COALESCE(SUM(b.quantity), 0) as total_stock,
+                       COUNT(b.id) as batch_count,
+                       MIN(CASE WHEN b.quantity > 0 THEN b.expiry_date END) as earliest_expiry
+                FROM products p
+                LEFT JOIN batches b ON p.id = b.product_id
+                GROUP BY p.id
+                ORDER BY p.id DESC
+            `);
+
+            let html = '';
+            products.forEach(p => {
+                if (category && p.category !== category) return;
+                if (search && !p.trade_name.toLowerCase().includes(search) && 
+                    !p.code.toLowerCase().includes(search) && 
+                    !(p.generic_name || '').toLowerCase().includes(search)) return;
+
+                const isLowStock = p.total_stock <= p.min_stock;
+                const stockBadge = isLowStock 
+                    ? `<span class="badge bg-danger">${p.total_stock} ${p.unit} (ต่ำกว่าขั้นต่ำ)</span>`
+                    : `<span class="badge bg-success">${p.total_stock} ${p.unit}</span>`;
+
+                html += `
+                    <tr>
+                        <td class="fw-bold">${p.code}</td>
+                        <td class="fw-semibold text-teal">${p.trade_name}</td>
+                        <td>${p.generic_name || '-'}</td>
+                        <td><span class="badge bg-light text-dark border">${p.category}</span></td>
+                        <td><span class="badge bg-secondary">${p.batch_count} Lot</span></td>
+                        <td>${stockBadge}</td>
+                        <td>${p.earliest_expiry || '-'}</td>
+                        <td><small class="text-muted"><i class="fa-solid fa-location-dot me-1"></i>${p.shelf_location || '-'}</small></td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="openAddBatchModal(${p.id}, '${p.trade_name}')" title="เติม Lot ใหม่">
+                                <i class="fa-solid fa-plus"></i> เติม Lot
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct(${p.id})" title="ลบ">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('tableInventoryBody').innerHTML = html || `<tr><td colspan="9" class="text-center py-4 text-muted">ไม่พบข้อมูลยา</td></tr>`;
+        }
+
+        // Add Product Form Handler
+        function handleAddProduct(e) {
+            e.preventDefault();
+            const code = document.getElementById('addCode').value.trim();
+            const tradeName = document.getElementById('addTradeName').value.trim();
+            const genericName = document.getElementById('addGenericName').value.trim();
+            const category = document.getElementById('addCategory').value.trim();
+            const unit = document.getElementById('addUnit').value.trim();
+            const location = document.getElementById('addLocation').value.trim();
+            const minStock = parseInt(document.getElementById('addMinStock').value) || 10;
+            const priceSell = parseFloat(document.getElementById('addPriceSell').value) || 0;
+
+            const batchNo = document.getElementById('addBatchNo').value.trim();
+            const expiryDate = document.getElementById('addExpiryDate').value;
+            const qty = parseInt(document.getElementById('addQuantity').value) || 0;
+
+            // Insert Product
+            const resProd = executeSQL(`
+                INSERT INTO products (code, trade_name, generic_name, category, unit, min_stock, shelf_location, price_sell)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [code, tradeName, genericName, category, unit, minStock, location, priceSell]);
+
+            if (resProd) {
+                const prodId = queryRows(`SELECT id FROM products WHERE code = ?`, [code])[0]?.id;
+                if (prodId) {
+                    // Insert Initial Batch
+                    executeSQL(`
+                        INSERT INTO batches (product_id, batch_no, expiry_date, quantity)
+                        VALUES (?, ?, ?, ?)
+                    `, [prodId, batchNo, expiryDate, qty]);
+
+                    // Insert Log
+                    executeSQL(`
+                        INSERT INTO transactions (product_id, batch_id, type, quantity, reason)
+                        VALUES (?, (SELECT max(id) FROM batches), 'IN', ?, 'เพิ่มยาใหม่เข้าคลัง')
+                    `, [prodId, qty]);
+                }
+
+                bootstrap.Modal.getInstance(document.getElementById('modalAddProduct')).hide();
+                document.getElementById('formAddProduct').reset();
+                renderAll();
+                Swal.fire('สำเร็จ', 'เพิ่มรายการยาและ Lot แรกเรียบร้อยแล้ว', 'success');
+            }
+        }
+
+        // Add Batch Modal Handler
+        function openAddBatchModal(productId, productName) {
+            document.getElementById('batchProductId').value = productId;
+            document.getElementById('batchProductName').value = productName;
+            new bootstrap.Modal(document.getElementById('modalAddBatch')).show();
+        }
+
+        function handleAddBatch(e) {
+            e.preventDefault();
+            const productId = document.getElementById('batchProductId').value;
+            const batchNo = document.getElementById('newBatchNo').value.trim();
+            const expiryDate = document.getElementById('newExpiryDate').value;
+            const qty = parseInt(document.getElementById('newQuantity').value);
+
+            const ok = executeSQL(`
+                INSERT INTO batches (product_id, batch_no, expiry_date, quantity)
+                VALUES (?, ?, ?, ?)
+            `, [productId, batchNo, expiryDate, qty]);
+
+            if (ok) {
+                executeSQL(`
+                    INSERT INTO transactions (product_id, batch_id, type, quantity, reason)
+                    VALUES (?, (SELECT max(id) FROM batches), 'IN', ?, 'รับเพิ่ม Lot ใหม่')
+                `, [productId, qty]);
+
+                bootstrap.Modal.getInstance(document.getElementById('modalAddBatch')).hide();
+                document.getElementById('formAddBatch').reset();
+                renderAll();
+                Swal.fire('สำเร็จ', 'เพิ่ม Lot ใหม่เรียบร้อยแล้ว', 'success');
+            }
+        }
+
+        function deleteProduct(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบ?',
+                text: 'การลบรายการยาจะลบ Lot ทั้งหมดที่เกี่ยวข้องออกด้วย',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'ใช่, ลบเลย',
+                cancelButtonText: 'ยกเลิก'
+            }).then(result => {
+                if (result.isConfirmed) {
+                    executeSQL(`DELETE FROM products WHERE id = ?`, [id]);
+                    renderAll();
+                    Swal.fire('ลบเรียบร้อย', '', 'success');
+                }
+            });
+        }
+
+        // TAB 3: DISPENSE & FEFO LOGIC
+        function renderDispenseProductDropdown() {
+            const products = queryRows(`
+                SELECT p.id, p.code, p.trade_name, SUM(b.quantity) as total_qty
+                FROM products p
+                JOIN batches b ON p.id = b.product_id
+                WHERE b.quantity > 0
+                GROUP BY p.id
+                ORDER BY p.trade_name ASC
+            `);
+
+            let html = '<option value="">-- เลือกรหัสยาหรือชื่อยา --</option>';
+            products.forEach(p => {
+                html += `<option value="${p.id}">${p.code} - ${p.trade_name} (คงเหลือรวม: ${p.total_qty})</option>`;
+            });
+            document.getElementById('dispenseProductSelect').innerHTML = html;
+        }
+
+        function onDispenseProductChange() {
+            const productId = document.getElementById('dispenseProductSelect').value;
+            const batchSelect = document.getElementById('dispenseBatchSelect');
+            const fefoBanner = document.getElementById('fefoAlert');
+
+            if (!productId) {
+                batchSelect.innerHTML = '<option value="">-- เลือก Lot ยา --</option>';
+                fefoBanner.classList.add('d-none');
+                document.getElementById('dispenseAvailableQty').value = '-';
+                return;
+            }
+
+            // FEFO: Sort batches by expiry_date ASC
+            const batches = queryRows(`
+                SELECT *, (julianday(expiry_date) - julianday('now')) as days_left
+                FROM batches
+                WHERE product_id = ? AND quantity > 0
+                ORDER BY expiry_date ASC
+            `, [productId]);
+
+            let html = '';
+            if (batches.length > 0) {
+                // Top item is recommended by FEFO
+                const fefoBatch = batches[0];
+                fefoBanner.classList.remove('d-none');
+                document.getElementById('fefoText').innerHTML = `
+                    แนะนำ Lot: <span class="fw-bold">${fefoBatch.batch_no}</span> 
+                    (หมดอายุ: <span class="text-danger fw-bold">${fefoBatch.expiry_date}</span> | คงเหลือใน Lot: ${fefoBatch.quantity})
+                `;
+
+                batches.forEach((b, idx) => {
+                    const tag = idx === 0 ? ' [แนะนำ FEFO]' : '';
+                    html += `<option value="${b.id}" data-qty="${b.quantity}">Lot: ${b.batch_no} (หมดอายุ: ${b.expiry_date}) - เหลือ ${b.quantity}${tag}</option>`;
+                });
+            } else {
+                fefoBanner.classList.add('d-none');
+                html = '<option value="">ไม่มี Lot ที่มีสินค้า</option>';
+            }
+
+            batchSelect.innerHTML = html;
+            onDispenseBatchChange();
+        }
+
+        function onDispenseBatchChange() {
+            const batchSelect = document.getElementById('dispenseBatchSelect');
+            const selectedOption = batchSelect.options[batchSelect.selectedIndex];
+            if (selectedOption && selectedOption.dataset.qty) {
+                document.getElementById('dispenseAvailableQty').value = selectedOption.dataset.qty;
+            } else {
+                document.getElementById('dispenseAvailableQty').value = '-';
+            }
+        }
+
+        function handleDispense(e) {
+            e.preventDefault();
+            const productId = document.getElementById('dispenseProductSelect').value;
+            const batchId = document.getElementById('dispenseBatchSelect').value;
+            const qty = parseInt(document.getElementById('dispenseQty').value);
+            const reason = document.getElementById('dispenseReason').value;
+            const note = document.getElementById('dispenseNote').value;
+
+            const availableQty = parseInt(document.getElementById('dispenseAvailableQty').value) || 0;
+
+            if (qty > availableQty) {
+                Swal.fire('จำนวนไม่พอ', `จำนวนที่ตัดสต็อก (${qty}) มากกว่าจำนวนคงเหลือใน Lot (${availableQty})`, 'warning');
+                return;
+            }
+
+            // Deduct batch stock
+            executeSQL(`UPDATE batches SET quantity = quantity - ? WHERE id = ?`, [qty, batchId]);
+
+            // Insert Transaction Log
+            const logReason = note ? `${reason} (${note})` : reason;
+            executeSQL(`
+                INSERT INTO transactions (product_id, batch_id, type, quantity, reason)
+                VALUES (?, ?, 'OUT', ?, ?)
+            `, [productId, batchId, qty, logReason]);
+
+            document.getElementById('formDispense').reset();
+            onDispenseProductChange();
+            renderAll();
+
+            Swal.fire({
+                icon: 'success',
+                title: 'ตัดสต็อกสำเร็จ',
+                text: `ตัดสต็อกจำนวน ${qty} หน่วย เรียบร้อยแล้ว`
+            });
+        }
+
+        function quickDispense(productId, batchId) {
+            switchToTab('dispense-tab');
+            document.getElementById('dispenseProductSelect').value = productId;
+            onDispenseProductChange();
+            document.getElementById('dispenseBatchSelect').value = batchId;
+            onDispenseBatchChange();
+        }
+
+        // TAB 4: EXPIRY MONITOR LOGIC
+        function filterExpiryList(status) {
+            currentExpiryFilter = status;
+            document.querySelectorAll('#expiryFilterGroup button').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderExpiryTable();
+        }
+
+        function renderExpiryTable() {
+            const today = new Date().toISOString().slice(0, 10);
+            const d30 = getDateOffset(30);
+            const d90 = getDateOffset(90);
+
+            const batches = queryRows(`
+                SELECT b.*, p.code, p.trade_name, p.generic_name, p.unit, p.shelf_location,
+                       (julianday(b.expiry_date) - julianday('now')) as days_left
+                FROM batches b
+                JOIN products p ON b.product_id = p.id
+                WHERE b.quantity > 0
+                ORDER BY b.expiry_date ASC
+            `);
+
+            let html = '';
+            batches.forEach(item => {
+                const days = Math.ceil(item.days_left);
+                let categoryStatus = 'SAFE';
+                let statusBadge = '';
+
+                if (days < 0) {
+                    categoryStatus = 'EXPIRED';
+                    statusBadge = `<span class="badge bg-danger badge-status">🔴 หมดอายุแล้ว (${Math.abs(days)} วัน)</span>`;
+                } else if (days <= 30) {
+                    categoryStatus = 'CRITICAL';
+                    statusBadge = `<span class="badge bg-warning text-dark badge-status">🟠 วิกฤต (เหลือ ${days} วัน)</span>`;
+                } else if (days <= 90) {
+                    categoryStatus = 'WARNING';
+                    statusBadge = `<span class="badge bg-info text-dark badge-status">🟡 เตือน (เหลือ ${days} วัน)</span>`;
+                } else {
+                    statusBadge = `<span class="badge bg-success badge-status">🟢 ปกติ (${days} วัน)</span>`;
+                }
+
+                if (currentExpiryFilter !== 'ALL' && currentExpiryFilter !== categoryStatus) return;
+
+                html += `
+                    <tr>
+                        <td class="fw-bold">${item.code}</td>
+                        <td>${item.trade_name} <br><small class="text-muted">${item.generic_name || '-'}</small></td>
+                        <td><span class="badge bg-light text-dark border">${item.batch_no}</span></td>
+                        <td class="fw-semibold">${item.expiry_date}</td>
+                        <td>${statusBadge}</td>
+                        <td class="fw-bold">${item.quantity} ${item.unit}</td>
+                        <td><small class="text-muted">${item.shelf_location || '-'}</small></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="writeOffExpired('${item.product_id}', '${item.id}', ${item.quantity})">
+                                <i class="fa-solid fa-trash-can"></i> ตัดทิ้ง
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('tableExpiryBody').innerHTML = html || `<tr><td colspan="8" class="text-center py-4 text-muted">ไม่พบรายการยาตามเงื่อนไข</td></tr>`;
+        }
+
+        function writeOffExpired(productId, batchId, qty) {
+            Swal.fire({
+                title: 'ยืนยันคัดยาทิ้ง?',
+                text: `ตัดสต็อกยาหมดอายุ/ชำรุดจำนวน ${qty} หน่วย ออกจากคลัง`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'ตัดออกจากสต็อก',
+                cancelButtonText: 'ยกเลิก'
+            }).then(res => {
+                if (res.isConfirmed) {
+                    executeSQL(`UPDATE batches SET quantity = 0 WHERE id = ?`, [batchId]);
+                    executeSQL(`INSERT INTO transactions (product_id, batch_id, type, quantity, reason) VALUES (?, ?, 'OUT', ?, 'ตัดทิ้งยาหมดอายุ')`, [productId, batchId, qty]);
+                    renderAll();
+                    Swal.fire('เรียบร้อย', 'ปรับยอดสต็อกเป็น 0 เรียบร้อยแล้ว', 'success');
+                }
+            });
+        }
+
+        // TAB 5: TRANSACTION HISTORY
+        function renderHistoryTable() {
+            const search = document.getElementById('searchHistory').value.toLowerCase();
+            const logs = queryRows(`
+                SELECT t.*, p.code, p.trade_name, b.batch_no
+                FROM transactions t
+                JOIN products p ON t.product_id = p.id
+                LEFT JOIN batches b ON t.batch_id = b.id
+                ORDER BY t.id DESC
+            `);
+
+            let html = '';
+            logs.forEach(l => {
+                if (search && !l.trade_name.toLowerCase().includes(search) && !l.code.toLowerCase().includes(search)) return;
+
+                const typeBadge = l.type === 'IN' 
+                    ? `<span class="badge bg-success">รับเข้า</span>`
+                    : `<span class="badge bg-danger">จ่ายออก</span>`;
+
+                html += `
+                    <tr>
+                        <td><small class="text-muted">${l.created_at}</small></td>
+                        <td>${typeBadge}</td>
+                        <td class="fw-semibold">${l.code} - ${l.trade_name}</td>
+                        <td><span class="badge bg-light text-dark border">${l.batch_no || '-'}</span></td>
+                        <td class="fw-bold ${l.type === 'IN' ? 'text-success' : 'text-danger'}">
+                            ${l.type === 'IN' ? '+' : '-'}${l.quantity}
+                        </td>
+                        <td>${l.reason || '-'}</td>
+                    </tr>
+                `;
+            });
+            document.getElementById('tableHistoryBody').innerHTML = html || `<tr><td colspan="6" class="text-center py-4 text-muted">ไม่พบประวัติการทำรายการ</td></tr>`;
+        }
+
+        // TAB 6: SQLITE DATABASE OPERATIONS
+        function exportSQLiteFile() {
+            if (!db) return;
+            const data = db.export();
+            const blob = new Blob([data], { type: 'application/x-sqlite3' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pharmastock_${new Date().toISOString().slice(0,10)}.sqlite`;
+            a.click();
+            URL.revokeObjectURL(url);
+            Swal.fire('ส่งออกสำเร็จ', 'ดาวน์โหลดไฟล์ฐานข้อมูล SQLite เรียบร้อยแล้ว', 'success');
+        }
+
+        function importSQLiteFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function() {
+                try {
+                    const Uints = new Uint8Array(reader.result);
+                    db = new SQL.Database(Uints);
+                    saveDBToLocalStorage();
+                    renderAll();
+                    Swal.fire('นำเข้าสำเร็จ', 'โหลดฐานข้อมูล SQLite ใหม่เรียบร้อยแล้ว', 'success');
+                } catch (err) {
+                    Swal.fire('เกิดข้อผิดพลาด', 'ไฟล์ SQLite ไม่ถูกต้อง: ' + err.message, 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function confirmResetDatabase() {
+            Swal.fire({
+                title: 'รีเซ็ตเป็นข้อมูลตัวอย่าง?',
+                text: 'ข้อมูลปัจจุบันทั้งหมดจะถูกลบและแทนที่ด้วยชุดข้อมูลทดสอบ',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'ใช่, รีเซ็ตข้อมูล',
+                cancelButtonText: 'ยกเลิก'
+            }).then(res => {
+                if (res.isConfirmed) {
+                    localStorage.removeItem('pharma_sqlite_db_b64');
+                    db = new SQL.Database();
+                    createTablesAndSeed();
+                    saveDBToLocalStorage();
+                    renderAll();
+                    Swal.fire('รีเซ็ตสำเร็จ', 'สร้างชุดข้อมูลตัวอย่างใหม่เรียบร้อยแล้ว', 'success');
+                }
+            });
+        }
+
+        function runCustomQuery() {
+            const sql = document.getElementById('sqlQueryInput').value.trim();
+            if (!sql) return;
+
+            try {
+                const res = db.exec(sql);
+                const container = document.getElementById('sqlQueryResult');
+                container.classList.remove('d-none');
+
+                if (res.length === 0) {
+                    container.innerHTML = `<div class="alert alert-info">คำสั่งทำงานสำเร็จ (ไม่มีข้อมูลส่งกลับ)</div>`;
+                } else {
+                    const cols = res[0].columns;
+                    const vals = res[0].values;
+                    let table = `<table class="table table-sm table-bordered"><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>`;
+                    vals.forEach(r => {
+                        table += `<tr>${r.map(v => `<td>${v}</td>`).join('')}</tr>`;
+                    });
+                    table += `</tbody></table>`;
+                    container.innerHTML = table;
+                }
+                saveDBToLocalStorage();
+                renderAll();
+            } catch (err) {
+                Swal.fire('Query Error', err.message, 'error');
+            }
+        }
+
+        // General Helper Utilities
+        function populateCategoryFilter() {
+            const categories = queryRows(`SELECT DISTINCT category FROM products`);
+            let html = '<option value="">หมวดหมู่ทั้งหมด</option>';
+            categories.forEach(c => {
+                html += `<option value="${c.category}">${c.category}</option>`;
+            });
+            document.getElementById('filterCategory').innerHTML = html;
+        }
+
+        function switchToTab(tabId) {
+            const tabBtn = document.getElementById(tabId);
+            if (tabBtn) {
+                const bsTab = new bootstrap.Tab(tabBtn);
+                bsTab.show();
+            }
+        }
+
+        function initEventListeners() {
+            document.getElementById('searchInventory').addEventListener('input', renderInventoryTable);
+            document.getElementById('filterCategory').addEventListener('change', renderInventoryTable);
+        }
+    </script>
+</body>
+</html>
